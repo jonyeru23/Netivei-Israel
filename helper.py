@@ -1,10 +1,15 @@
 from urllib import request
+from tkinter import *
 
-Format = "utf-8"
 
-def get_html_page(url):
-    """
-    returns a string based html page
-    """
-    url = request.urlopen(url)
-    return url.read().decode(Format)
+
+def show_subs(page, options):
+    page.subs_clicked.set('לא נבחר')
+    drop = OptionMenu(page.root, page.subs_clicked, *options).pack()
+    myButton = Button(page.root, text='submit', command=answer).pack()
+
+
+def answer():
+    picked = Label(self.root, text=subs_clicked.get()).pack()
+    # return self.subs_clicked.get()
+
