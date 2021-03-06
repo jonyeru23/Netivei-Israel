@@ -20,6 +20,14 @@ class FrontPage():
         self.root.geometry("400x400")
 
     # get a text bar with options
+    def show_subs(self):
+        self.subs_clicked.set('לא נבחר')
+        drop = OptionMenu(self.root, self.subs_clicked, *self.subs).pack()
+        myButton = Button(self.root, text='submit', command=self.answer).pack()
+
+    def answer(self):
+        picked = Label(self.root, text=self.subs_clicked.get()).pack()
+        # return self.subs_clicked.get()
 
 class ReadSubjects():
     """
@@ -33,7 +41,7 @@ class ReadSubjects():
 
     def add_subs(self):
         """
-        go to the
+        go to the 
         """
         options = []
         html = request.urlopen(self.url).read()
@@ -50,3 +58,4 @@ class ReadSubjects():
         return options
 
 class Display_Subjects():
+    
