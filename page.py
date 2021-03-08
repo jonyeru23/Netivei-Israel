@@ -17,10 +17,10 @@ class FrontPage():
 
     def __init__(self):
         self.root = Tk()
-        self.subject = Label(self.root, text=":מה הנושא המרכזי").pack()
+        self.subject = Label(self.root, text="מה תרצו לדעת?").pack()
         # build the screen
         self.root.title("למצוא את התקן")
-        self.root.geometry("400x400")
+        self.root.geometry("800x800")
 
 
 def ReadSubjects():
@@ -65,9 +65,16 @@ class Display_Subjects(Display):
 
         # building a options menu
         self.clicked.set('לא נבחר')
-        # print(self.options)
-        self.drop = OptionMenu(self.root, self.clicked, *self.options).pack()
-        mybutton = Button(self.root, text='submit', command=self.change).pack()
+        self.make_options()
+
+    def make_options(self):
+        """
+        building a label a menu and a button
+        """
+        main_label = Label(self.root, text=":מה הנושא המרכזי")
+        main_label.place(relx=0.9, rely=0.1)
+        drop = OptionMenu(self.root, self.clicked, *self.options).place(relx=0.5, rely=0.1)
+        mybutton = Button(self.root, text='בחרתי!', command=self.change).place(relx=0.4, rely=0.105)
 
 
     def change(self):
@@ -113,13 +120,13 @@ class DisplaySubSubjects(Display):
         self.options = options
 
         # build the interface
-        self.drop = OptionMenu(self.root, self.clicked, *self.options).pack()
-        mybutton = Button(self.root, text='submit', command=self.ask).pack()
+        self.drop = OptionMenu(self.root, self.clicked, *self.options).place(relx=0.5, rely=0.2)
+        mybutton = Button(self.root, text='submit', command=self.ask).place(relx=0.4, rely=0.21)
 
     def ask(self):
         """
         asking the user what he/she would like to know
         """
-        pass
+
 
 
