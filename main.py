@@ -1,27 +1,31 @@
 from page import *
+from helper import *
 from urllib import request, parse
 import requests
 
+
+# THE MAIN URL
 url_main = "https://www.iroads.co.il/"
+filter = 'מידע-לספקים'
+
 
 
 def main():
-    # building my front page
+    # building my front page -- class
     page = FrontPage()
 
-    # getting the subjects from the web
-    main_subs_links = ReadSubjects()
-    # making the dropdown
-    main_menu = Display_Subjects(main_subs_links.keys(), page.root, main_subs_links)
+    # making a dict of options-links -- function
+    main_subs_links = read_subjects(url_main, filter)
 
-
-    # # making the dropdown
-    # sub_menu = Display_Subjects(sub_subs.options, page.root)
+    # making the dropdown, label and a button -- class
+    main_menu = DisplayMenu(page.root, ":מה הנושא המרכזי", main_subs_links.keys(), True,
+                            main_subs_links, url_main)
+    display_menus.append(main_menu)
+    main_menu.pack()
 
     page.root.mainloop()
 
     """ checking things"""
-
 
 
 if __name__ == '__main__':
