@@ -1,7 +1,7 @@
 import requests
 from tkinter import *
 from bs4 import BeautifulSoup as bs
-
+import os
 
 def make_options(root, clicked, options, text):
     """
@@ -61,3 +61,34 @@ def get_headers(clicked, hrefs, url_main):
                     subs_links[big.article.h2.text] = links
 
     return subs_links, subject_url
+
+
+
+
+
+def get_real_file(url):
+    """
+    accepts a fliphtml link and returns a pdf link
+    """
+    req = requests.get(url)
+
+    soup = bs(req.text, features="lxml")
+
+
+
+
+
+
+def make_dir():
+    """
+    make a new dir and return the path to that dir
+    """
+    # get the current dir
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+
+    # make a new dir
+    dir_name = "files"
+    path = os.path.join(dir_path, dir_name)
+    os.mkdir(path)
+
+    return path
