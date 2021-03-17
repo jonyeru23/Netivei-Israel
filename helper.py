@@ -52,17 +52,27 @@ def get_headers(clicked, hrefs, url_main):
     # get the relevant headers
     bigs = soup.findAll('div', class_='container-fluid col9')
 
-    if bigs is not None:
-        for big in bigs:
-            if big.ul is not None:
-                raw_links = big.ul.findAll('li')
-                if raw_links is not None:
-                    links = [link.div.div.a.get('href', None) for link in raw_links if link.div.div.a is not None]
-                    subs_links[big.article.h2.text] = links
+    for big in bigs:
+        raw_links = big.ul.findAll('li')
+        # i want to create a dict with the subjects and links
+        # and then add it to the big dict
+        spec_links = {}
+        for raw in raw_links:
+            try:
+                spec_links[raw.div.h2.text.replace('\n', '')] = raw.div.div.a.get('href', None)
+            except AttributeError:
+                print(raw.div.h2.text)
+        subs_links[big.article.h2.text] = spec_links
+
+    # print_(subs_links)
 
     return subs_links, subject_url
 
-
+def print_(dict):
+    for k in dict:
+        print(f"key:{k}")
+        for k1 in dict[k]:
+            print(f"keys:{k1}, values{dict[k][k1]}")
 
 
 
