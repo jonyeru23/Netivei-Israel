@@ -2,6 +2,20 @@ import requests
 from tkinter import *
 from bs4 import BeautifulSoup as bs
 import os
+import time
+import concurrent.futures as cf
+
+
+def timer(func):
+    """ for personal use"""
+    def wrapper(*args, **kwargs):
+        t1 = time.perf_counter()
+        value = func(*args, **kwargs)
+        t2 = time.perf_counter()
+        print(f'This is the time it took:{round(t2 - t1)} second(s)')
+        return value
+    return wrapper
+
 
 def make_options(root, clicked, options, text):
     """
@@ -14,7 +28,7 @@ def make_options(root, clicked, options, text):
 
 def read_subjects(url, the_filter):
     """
-    get me the subjects and return two datasets
+    get me the subjects and return
     a dict of option - href
     """
     hrefs = {}
@@ -35,25 +49,39 @@ def read_subjects(url, the_filter):
 
     return hrefs
 
+class GetHeaders:
+    def __init__(self, clicked, hrefs, url_main):
+        self.clicked = clicked
+        self.hrefs = hrefs
+        self.url_main = url_main
+        self.subs_links = {}
+        self.subject_url = self.get_subject_url()
 
-def get_headers(clicked, hrefs, url_main):
-    """
-    function will return a dict of headers-links
-    """
-    # make the dict
-    subs_links = {}
+    def get_subject_url(self):
+        url = requests.get(self.url_main, self.hrefs[self.clicked][1:-1])
+        return requests.get(url.url.replace('?', ''))
 
-    # making out way for the page
-    url = requests.get(url_main, hrefs[clicked][1:-1])
-    subject_url = requests.get(url.url.replace('?', ''))
-    # get the soup
-    soup = bs(subject_url.text, features="lxml")
+    @timer
+    def get_headers(self):
+        """
+        function will return a dict of headers-links
+        """
+        # get the soup
+        soup = bs(self.subject_url.text, features="lxml")
 
-    # get the relevant headers
-    bigs = soup.findAll('div', class_='container-fluid col9')
+        # get the relevant headers
+        bigs = soup.findAll('div', class_='container-fluid col9')
 
-    for big in bigs:
-        raw_links = big.ul.findAll('li')
+        with cf.ProcessPoolExecutor() as executor:
+            executor.map(self.parser_head_link, bigs)
+
+        return self.subs_links
+
+    def parser_head_link(self, big):
+        try:
+            raw_links = big.ul.findAll('li')
+        except AttributeError:
+            return
         # i want to create a dict with the subjects and links
         # and then add it to the big dict
         spec_links = {}
@@ -62,11 +90,7 @@ def get_headers(clicked, hrefs, url_main):
                 spec_links[raw.div.h2.text.replace('\n', '')] = raw.div.div.a.get('href', None)
             except AttributeError:
                 print(raw.div.h2.text)
-        subs_links[big.article.h2.text] = spec_links
-
-    # print_(subs_links)
-
-    return subs_links, subject_url
+        self.subs_links[big.article.h2.text] = spec_links
 
 def print_(dict):
     for k in dict:
