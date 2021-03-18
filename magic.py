@@ -2,7 +2,6 @@
 this file is for all the actions that will take place from the question on
 """
 import requests
-import PyPDF2
 from bs4 import BeautifulSoup as bs
 
 # class LoadText:
