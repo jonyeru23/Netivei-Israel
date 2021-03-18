@@ -69,8 +69,9 @@ class MyButton:
                 for i in range(1, len(display_menus)):
                     display_menus[i].remove()
             # find the subs -- function
-            sub_subs_links, subject_url = get_headers(str(self.menu.clicked.get()), self.sub_links, self.url)
-
+            header = GetHeaders(str(self.menu.clicked.get()), self.sub_links, self.url)
+            subject_url = header.subject_url
+            sub_subs_links = header.get_headers()
             # create another display menu
             try:
                 sub_menu = DisplayMenu(self.menu.root, ":מה הנושא המשני", sub_subs_links.keys(), False,
@@ -78,7 +79,7 @@ class MyButton:
                 display_menus.append(sub_menu)
                 sub_menu.pack()
 
-            except TypeError:
+            except (TypeError, AttributeError):
                 bad = BuildLink(self.menu.root, subject_url.url, ":אין כותרות זמינות, לגישה לדף לחץ על הקישור")
                 display_menus.append(bad)
                 bad.pack()
