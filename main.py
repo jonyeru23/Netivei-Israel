@@ -1,8 +1,6 @@
 from page import *
 from helper import *
 import requests
-import PyPDF2
-import textract
 import codecs
 import re
 
