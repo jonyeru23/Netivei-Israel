@@ -14,13 +14,60 @@ class FrontPage:
     """
     this class is for building the basic basic front
     """
-
     def __init__(self):
         self.root = Tk()
         self.subject = Label(self.root, text="?מה תרצו לדעת").pack()
         # build the screen
         self.root.title("למצוא את התקן")
         self.root.geometry("800x800")
+
+
+class GetHeaders:
+    """
+    A class to get the dict with the names of the
+    options and links (using threading)
+    """
+    def __init__(self, clicked, hrefs, url_main):
+        self.clicked = clicked
+        self.hrefs = hrefs
+        self.url_main = url_main
+        self.subs_links = {}
+        self.subject_url = self.get_subject_url()
+
+    def get_subject_url(self):
+        url = requests.get(self.url_main, self.hrefs[self.clicked][1:-1])
+        return requests.get(url.url.replace('?', ''))
+
+    @timer
+    def get_headers(self):
+        """
+        function will return a dict of headers-links
+        """
+        # get the soup
+        soup = bs(self.subject_url.text, features="lxml")
+
+        # get the relevant headers
+        bigs = soup.findAll('div', class_='container-fluid col9')
+
+        with cf.ThreadPoolExecutor() as executor:
+            executor.map(self.parser_head_link, bigs)
+        return self.subs_links
+
+    def parser_head_link(self, big):
+        try:
+            raw_links = big.ul.findAll('li')
+        except AttributeError:
+            return
+        # i want to create a dict with the subjects and links
+        # and then add it to the big dict
+        spec_links = {}
+        for raw in raw_links:
+            try:
+                spec_links[raw.div.h2.text.replace('\n', '')] = raw.div.div.a.get('href', None)
+            except AttributeError:
+                print(raw.div.h2.text)
+        self.subs_links[big.article.h2.text] = spec_links
+
 
 
 class DisplayMenu:
@@ -87,8 +134,11 @@ class MyButton:
             """
             ask the fucking question
             """
+            if len(display_menus) > 2:
+                for i in range(2, len(display_menus)):
+                    display_menus[i].remove()
             # it's recursive
-            question = TheQuestion(self.menu.root, self.sub_links)
+            question = TheQuestion(self.menu.root, self.sub_links[self.menu.clicked.get()])
             question.show()
             display_menus.append(question)
 
@@ -123,5 +173,6 @@ class TheQuestion:
         self.dif_button.pack_forget()
 
     def go(self):
-        # texts = Text2Dict()
+        # print(self.subject_links)
+        texts = LoadText(self.subject_links)
         print("fuck")
