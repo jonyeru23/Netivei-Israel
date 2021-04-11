@@ -61,3 +61,14 @@ CAD STANDARD
 הנחיות לתכנון
 מפרט כךךי
 מחירון
+
+
+    with open('test.txt', 'r', encoding='utf8') as f:
+        text = f.read()
+    text_copy = re.sub('[^\W]', ' ', text)
+    chars = re.split(' ', text_copy)
+    for char in chars[:]:
+        if char == '' or len(char) != 1 or char in punctuation:
+            continue
+        text = re.sub(char, '', text)
+    print(text)
