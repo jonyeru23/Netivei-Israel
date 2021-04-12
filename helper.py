@@ -3,7 +3,7 @@ from tkinter import *
 from bs4 import BeautifulSoup as bs
 import os
 import time
-import concurrent.futures as cf
+
 
 
 def timer(func):
@@ -50,8 +50,6 @@ def read_subjects(url, the_filter):
     return hrefs
 
 
-
-
 def print_(dict):
     for k in dict:
         print(f"key:{k}")
@@ -59,16 +57,3 @@ def print_(dict):
             print(f"keys:{k1}, values{dict[k][k1]}")
 
 
-def make_dir():
-    """
-    make a new dir and return the path to that dir
-    """
-    # get the current dir
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-
-    # make a new dir
-    dir_name = "files"
-    path = os.path.join(dir_path, dir_name)
-    os.mkdir(path)
-
-    return path
