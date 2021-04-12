@@ -1,5 +1,3 @@
-from tkinter import *
-from helper import *
 from magic import *
 from tkhtmlview import HTMLLabel
 
@@ -8,7 +6,6 @@ from tkhtmlview import HTMLLabel
 this is a global list of all the display menus
 """
 display_menus = []
-
 
 class FrontPage:
     """
@@ -90,9 +87,9 @@ class DisplayMenu:
         self.button.button.pack()
 
     def remove(self):
-        self.label.pack_forget()
-        self.drop.pack_forget()
-        self.button.button.pack_forget()
+        self.label.destroy()
+        self.drop.destroy()
+        self.button.button.destroy()
 
 
 class MyButton:
@@ -110,48 +107,79 @@ class MyButton:
         if it is the first option menu create the second one
         if it's the second, ask the question and make the magic happen
         """
-
         if self.menu.first:
-            if len(display_menus) > 1:
-                for i in range(1, len(display_menus)):
-                    display_menus[i].remove()
+            self.__cleaning_menus(1)
             # find the subs -- function
-            header = GetHeaders(str(self.menu.clicked.get()), self.sub_links, self.url)
-            subject_url = header.subject_url
-            sub_subs_links = header.get_headers()
-            # create another display menu
             try:
-                sub_menu = DisplayMenu(self.menu.root, ":מה הנושא המשני", sub_subs_links.keys(), False,
-                                       sub_subs_links, subject_url)
-                display_menus.append(sub_menu)
-                sub_menu.pack()
+                header = GetHeaders(str(self.menu.clicked.get()), self.sub_links, self.url)
+                subject_url = header.subject_url
+                sub_subs_links = header.get_headers()
 
-            except (TypeError, AttributeError):
-                bad = BuildLink(self.menu.root, subject_url.url, ":אין כותרות זמינות, לגישה לדף לחץ על הקישור")
+                # create another display menu
+                try:
+                    sub_menu = DisplayMenu(self.menu.root, ":מה הנושא המשני", sub_subs_links.keys(), False,
+                                           sub_subs_links, subject_url)
+                    display_menus.append(sub_menu)
+                    sub_menu.pack()
+
+                except (TypeError, AttributeError):
+                    bad = NoHeads(self.menu.root, ":אין כותרות זמינות, לגישה לדף לחץ על הקישור", subject_url.url)
+                    display_menus.append(bad)
+                    bad.pack()
+
+            except KeyError:
+                bad = UserCheck(self.menu.root, "נא לבחור אופציה")
                 display_menus.append(bad)
                 bad.pack()
+
         else:
             """
             ask the fucking question
             """
-            if len(display_menus) > 2:
-                for i in range(2, len(display_menus)):
-                    display_menus[i].remove()
+            self.__cleaning_menus(2)
             # it's recursive
-            question = TheQuestion(self.menu.root, self.sub_links[self.menu.clicked.get()])
-            question.show()
-            display_menus.append(question)
+            try:
+                question = TheQuestion(self.menu.root, self.sub_links[self.menu.clicked.get()])
+                question.show()
+                display_menus.append(question)
+            except KeyError:
+                bad = UserCheck(self.menu.root, "נא לבחור אופציה")
+                display_menus.append(bad)
+                bad.pack()
+
+    @staticmethod
+    def __cleaning_menus(which_menu):
+        start_length = len(display_menus)
+        if start_length > which_menu:
+            print(f"wich: {which_menu}")
+            print(start_length)
+            for i, item in enumerate(display_menus[:]):
+                if i < which_menu:
+                    continue
+                item.remove()
+                display_menus.remove(item)
 
 
-class BuildLink:
+class UserCheck:
     """ this is for checking the user """
-    def __init__(self, root, link, label_text):
+    def __init__(self, root, label_text):
         self.bad_label = Label(root, text=f"{label_text}")
+
+    def remove(self):
+        self.bad_label.destroy()
+
+    def pack(self):
+        self.bad_label.pack()
+
+
+class NoHeads(UserCheck):
+    def __init__(self, root, label_text, link):
+        super().__init__(root, label_text)
         self.link_label = HTMLLabel(root, html=f'<a href="{link}"> Link to page </a>')
 
     def remove(self):
-        self.bad_label.pack_forget()
-        self.link_label.pack_forget()
+        self.bad_label.destroy()
+        self.link_label.destroy()
 
     def pack(self):
         self.bad_label.pack()
@@ -169,10 +197,14 @@ class TheQuestion:
         self.dif_button.pack()
 
     def remove(self):
-        self.input.pack_forget()
-        self.dif_button.pack_forget()
+        self.input.destroy()
+        self.dif_button.destroy()
 
     def go(self):
-        # print(self.subject_links)
-        texts = LoadText(self.subject_links)
+        # initialize the class
+        loading = LoadText(self.subject_links)
+        # get the dict
+        texts = loading.get_texts()
+
+
         print("fuck")
