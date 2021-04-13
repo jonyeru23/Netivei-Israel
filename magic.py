@@ -2,12 +2,12 @@
 this file is for all the actions that will take place from the question on
 """
 from helper import *
-import textract
+# import textract
 import shutil
 import concurrent.futures as cf
 from string import punctuation
-import nltk
-from math import log, e
+# import nltk
+from math import log, e, inf
 import numpy as np
 
 
@@ -107,7 +107,7 @@ class LoadText:
 
     @staticmethod
     def __get_text_from_(page):
-        """getting the text and manipiulating it (because it's hebrew"""
+        """getting the text and manipiulating it (because it's hebrew)"""
         text = page.text.encode("latin1").decode("utf-8")
         text = re.sub("\s\s+", " ", text)
         text_copy = re.sub('[^\W]', ' ', text)
@@ -139,33 +139,64 @@ class TFIDF():
     """Finding nemo!"""
 
     def __init__(self, texts, the_questions, n=1):
-        """the data for both classes"""
         self._n = n
-        self._idf = {}
         self._stop_words = self._get_stop_words_hebrew('hebrew.txt')
         self._documents = texts
         self._tokened_docs = {}
+        self._sentences = {}
         self._the_questions = the_questions
 
 
-    def _get_answer(self):
+    def get_answer(self):
         """all the work"""
         # tokenized the documents
-        self._tokenizer()
+        for name, text in self._documents.items():
+            self._tokened_docs[name] = self._tokenizer(text)
 
         # compute the idfs
-        self._compute_idfs()
+        docs_idfs = self._compute_idfs(self._tokened_docs)
 
         # get the top files
+        top_files = self._top_keys(docs_idfs, self._tokened_docs, True)
+
+        # get the top sentences
+        for file in top_files:
+            self._get_sentences(file)
+
+        for name, text in self._sentences.copy().items():
+            self._sentences[name] = self._tokenizer(text)
+
+        sentences_idfs = self._compute_idfs(self._sentences)
+
+        top_sentences = self._top_keys(sentences_idfs, self._sentences, False)
+
+        return top_sentences
 
 
+    def _get_sentences(self, name):
+        """making a doc a dict of sentences"""
+        text = self._documents[name]
 
-    def _tokenizer(self):
+        split_text = re.split(".", text)
+
+        for sentence in split_text:
+            self._sentences[sentence] = re.split(' ', sentence)
+    #
+    # # Extract sentences from top files
+    # sentences = dict()
+    # for filename in filenames:
+    #     for passage in files[filename].split("\n"):
+    #         for sentence in nltk.sent_tokenize(passage):
+    #             tokens = tokenize(sentence)
+    #             if tokens:
+    #                 sentences[sentence] = tokens
+
+    def _tokenizer(self, text):
         """make every string given a list of space or punctuation marks separated tokens"""
-        for name, text in self._documents.items():
-            words = nltk.word_tokenize(text)
-            self._tokened_docs[name] = [word for word in words if word not in punctuation and
-                                        word not in self._stop_words]
+        words = nltk.word_tokenize(text)
+        return [word for word in words if word not in punctuation
+                and word not in self._stop_words
+                and word != " "]
 
     @staticmethod
     def _get_stop_words_hebrew(filename):
@@ -176,7 +207,7 @@ class TFIDF():
         return stopwords
 
     @timer
-    def _compute_idfs(self):
+    def _compute_idfs(self, tokened_dict):
         """
         Given a dictionary of `documents` that maps names of documents to a list
         of words, return a dictionary that maps words to their IDF values.
@@ -187,37 +218,39 @@ class TFIDF():
         i will keep track of words i saw in each doc to make sure i dont dubble increment
         after i loopes over all the docs, i will make all the words and give them the log value
         """
+        # make thereturned dict
+        idf = {}
         # get the number of the docs
-        num_docs = len(self._tokened_docs)
+        num_docs = len(tokened_dict)
 
         # loop over each doc
-        for doc in self._tokened_docs:
+        for name, text in tokened_dict.items():
             seen = set()
             # loop over each word
-            for word in self._tokened_docs[doc]:
+            for word in text:
                 # if the word was seen in the doc continue
                 if word in seen:
                     continue
                 # else, check if it exists in dict, if so i++ if not i = 0
                 else:
-                    if word in self._idf:
-                        self._idf[word] += 1
+                    if word in idf:
+                        idf[word] += 1
                     else:
-                        self._idf[word] = 1
+                        idf[word] = 1
                     seen.add(word)
 
         # make it logarithmic
-        for word in self._idf:
-            self._idf[word] = log((num_docs / self._idf[word]), e)
+        for word in idf:
+            idf[word] = log((num_docs / idf[word]), e)
 
+        return idf
 
-    def top_files(self):
+    def _top_keys(self, idf, tokened_dict, is_file):
         """
         Given a `query` (a set of words), `files` (a dictionary mapping names of
         files to a list of their words), and `idfs` (a dictionary mapping words
         to their IDF values), return a list of the filenames of the the `n` top
         files that match the query, ranked according to tf-idf.
-
         the how:
         make a dict with ranking for each doc (doc as key and grade as value)
         iterate over all the words in the query,
@@ -227,32 +260,41 @@ class TFIDF():
         """
         # make the dict
         ranking = {}
-        for file in self._tokened_docs:
+        for file in tokened_dict:
             ranking[file] = 0
 
         # iterate over the query
         for word in self._the_questions:
-            if word in self._stop_words or word not in self._idf:
+            if word in self._stop_words or word not in idf:
                 continue
 
             # term frequency and idf
-            for file in self._tokened_docs:
-                ranking[file] += self._tokened_docs[file].count(word) * self._idf[word]
+            for key, text in tokened_dict.items():
+                if is_file:
+                    ranking[key] += text.count(word) * idf[word]
+                else:
+                    # in other words, if the word is in a sentence rank it higher
+                    if word in text:
+                        ranking[key] += idf[word]
 
-        keys = list(ranking.keys())
-        values = list(ranking.values())
         the_keys = []
-
         for i in range(self._n):
-            # getting the index of the highest value
-            ind = np.argmax(values)
-            # appending it to the keys we will return
-            the_keys.append(keys[ind])
-            # removing the reminders
-            values.remove(values[ind])
-            keys.remove(keys[ind])
+            best_key = self._get_highest_key_by_value(ranking)
+            the_keys.append(best_key)
+            ranking.pop(best_key)
 
         return the_keys
+
+    @staticmethod
+    def _get_highest_key_by_value(ranking):
+        highest_value = -inf
+        best_key = None
+        for key, grade in ranking.items():
+            if grade > highest_value:
+                best_key = key
+                highest_value = grade
+        return best_key
+
 
 
 """
@@ -274,4 +316,3 @@ muy importante
 """
 opening files
 """
-
