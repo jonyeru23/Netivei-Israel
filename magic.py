@@ -8,6 +8,7 @@ import concurrent.futures as cf
 from string import punctuation
 import nltk
 from math import log, e
+import numpy as np
 
 
 
@@ -116,7 +117,7 @@ class LoadText:
             # find the chars of unicode Cf
             if char == '' or len(char) != 1 or char in punctuation:
                 continue
-            text = re.sub(char, '', text)
+            text = re.sub(char, ' ', text)
         return text
 
     def __write_file(self, item):
@@ -135,21 +136,36 @@ class LoadText:
             print("Error: %s : %s" % (self.__path, e.strerror))
 
 class TFIDF():
-    """The father class"""
+    """Finding nemo!"""
 
-    def __init__(self, texts, the_questions):
+    def __init__(self, texts, the_questions, n=1):
         """the data for both classes"""
+        self._n = n
         self._idf = {}
         self._stop_words = self._get_stop_words_hebrew('hebrew.txt')
-        self.documents = texts
-        self.the_questions = the_questions
+        self._documents = texts
+        self._tokened_docs = {}
+        self._the_questions = the_questions
 
-    def _tokenize(self, document):
+
+    def _get_answer(self):
+        """all the work"""
+        # tokenized the documents
+        self._tokenizer()
+
+        # compute the idfs
+        self._compute_idfs()
+
+        # get the top files
+
+
+
+    def _tokenizer(self):
         """make every string given a list of space or punctuation marks separated tokens"""
-        stopwords = self._get_stop_words_hebrew('hebrew.txt')
-        words = nltk.word_tokenize(document)
-        return [word for word in words if word not in punctuation and
-                word not in stopwords]
+        for name, text in self._documents.items():
+            words = nltk.word_tokenize(text)
+            self._tokened_docs[name] = [word for word in words if word not in punctuation and
+                                        word not in self._stop_words]
 
     @staticmethod
     def _get_stop_words_hebrew(filename):
@@ -159,6 +175,7 @@ class TFIDF():
             stopwords = list(text.split('\n'))
         return stopwords
 
+    @timer
     def _compute_idfs(self):
         """
         Given a dictionary of `documents` that maps names of documents to a list
@@ -171,13 +188,13 @@ class TFIDF():
         after i loopes over all the docs, i will make all the words and give them the log value
         """
         # get the number of the docs
-        num_docs = len(self.documents)
+        num_docs = len(self._tokened_docs)
 
         # loop over each doc
-        for doc in self.documents:
+        for doc in self._tokened_docs:
             seen = set()
             # loop over each word
-            for word in self.documents[doc]:
+            for word in self._tokened_docs[doc]:
                 # if the word was seen in the doc continue
                 if word in seen:
                     continue
@@ -192,6 +209,51 @@ class TFIDF():
         # make it logarithmic
         for word in self._idf:
             self._idf[word] = log((num_docs / self._idf[word]), e)
+
+
+    def top_files(self):
+        """
+        Given a `query` (a set of words), `files` (a dictionary mapping names of
+        files to a list of their words), and `idfs` (a dictionary mapping words
+        to their IDF values), return a list of the filenames of the the `n` top
+        files that match the query, ranked according to tf-idf.
+
+        the how:
+        make a dict with ranking for each doc (doc as key and grade as value)
+        iterate over all the words in the query,
+        if a word is stopword, continue
+        else, calculate her tf-idf and add it to the value of the dict
+        the dict with the hiesght value wins
+        """
+        # make the dict
+        ranking = {}
+        for file in self._tokened_docs:
+            ranking[file] = 0
+
+        # iterate over the query
+        for word in self._the_questions:
+            if word in self._stop_words or word not in self._idf:
+                continue
+
+            # term frequency and idf
+            for file in self._tokened_docs:
+                ranking[file] += self._tokened_docs[file].count(word) * self._idf[word]
+
+        keys = list(ranking.keys())
+        values = list(ranking.values())
+        the_keys = []
+
+        for i in range(self._n):
+            # getting the index of the highest value
+            ind = np.argmax(values)
+            # appending it to the keys we will return
+            the_keys.append(keys[ind])
+            # removing the reminders
+            values.remove(values[ind])
+            keys.remove(keys[ind])
+
+        return the_keys
+
 
 """
 muy importante
