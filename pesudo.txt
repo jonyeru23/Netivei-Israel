@@ -32,7 +32,7 @@ what do i wnat to do:
 
 
 משימות:
-1 לבנות פרונט
+1לבנות פרונט
 2 לגשת לאתר בצורה טובה
 3 לגשת למסמכים
 4 לעבד מסמכים
@@ -72,3 +72,7 @@ CAD STANDARD
             continue
         text = re.sub(char, '', text)
     print(text)
+
+
+הדבר ההכי חשוב בעולם 
+bookConfig.DownloadURL
