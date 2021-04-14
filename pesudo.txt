@@ -76,3 +76,14 @@ CAD STANDARD
 
 הדבר ההכי חשוב בעולם 
 bookConfig.DownloadURL
+
+
+from selenium import webdriver
+
+    option = webdriver.ChromeOptions()
+    option.add_argument('headless')
+    driver = webdriver.Chrome(r'C:\Users\user\Desktop\jonathan/chromedriver.exe', options=option)
+
+    driver.get("http://online.fliphtml5.com/kfky/pzdc/#p=1")
+    pdf = driver.execute_script('return bookConfig.DownloadURL')
+    print(pdf)
