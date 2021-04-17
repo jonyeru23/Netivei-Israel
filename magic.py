@@ -2,14 +2,13 @@
 this file is for all the actions that will take place from the question on
 """
 from helper import *
-# import textract
+import textract
 import shutil
 import concurrent.futures as cf
 from string import punctuation
-# import nltk
+import nltk
 from math import log, e, inf
-import numpy as np
-
+from selenium import webdriver
 
 
 # types for numbers
@@ -23,6 +22,38 @@ jpg = 'jpg'
 types = [jpg, flip, pdf, docx, xsl, zip, wmv]
 bad_types = [wmv, jpg, zip]
 
+
+class Dir:
+    def __init__(self):
+        self.path = None
+        self.name = "files"
+
+    def make_dir(self):
+        """
+        check if dir exist and make a new one
+        """
+        self._is_path_exist()
+        self._mkdir(self._get_cur_path())
+
+    def destroy_dir(self):
+        try:
+            shutil.rmtree(self.path)
+        except OSError as e:
+            print("Error: %s : %s" % (self.path, e.strerror))
+
+    def _is_path_exist(self):
+        if self.path is not None:
+            self.destroy_dir()
+
+    def _mkdir(self, dir_path):
+        self.path = os.path.join(dir_path, self.name)
+        os.mkdir(self.path)
+
+    @staticmethod
+    def _get_cur_path():
+        return os.path.dirname(os.path.realpath(__file__))
+
+
 class LoadText:
     """a class to load all the text to a dict"""
     """
@@ -35,38 +66,29 @@ class LoadText:
         # a dict of the links and the headers
         self.__micro_subject_links = subject_links
         # path to new_dir and making a new dir
-        self.__path = None
+        self.dir = Dir()
         # a dict for text_name[name] = text
         self.texts = {}
 
+    @staticmethod
+    def _get_driver(chrome_path='chromedriver.exe'):
+        """opening the chrome driver once"""
+        option = webdriver.ChromeOptions()
+        option.add_argument('headless')
+        driver = webdriver.Chrome(chrome_path,
+                                  options=option)
+        return driver
+
+    @timer
     def get_texts(self):
         """this is the interface!"""
-        self.__path = self.__make_dir()
+        self.dir.make_dir()
         # loads the files to the dict
         self.__load_files()
-        for i, k in self.texts.items():
-            print(i)
-            print(k)
         # parsers the dict
-        self.__destroy_dir()
+        self.dir.destroy_dir()
 
         return self.texts
-
-    def __make_dir(self):
-        """
-        make a new dir and return the path to that dir
-        """
-        if self.__path is not None:
-            self.__destroy_dir()
-        # get the current dir
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-
-        # make a new dir
-        dir_name = "files"
-        path = os.path.join(dir_path, dir_name)
-        os.mkdir(path)
-
-        return path
 
     def __load_files(self):
         with cf.ThreadPoolExecutor() as executor:
@@ -89,51 +111,46 @@ class LoadText:
 
     def __load_the_file(self, file_type, item):
         if file_type == flip:
-            """we dont need to download the file to the dir if it's a flip"""
-            r = requests.get(item[1])
-            soup = bs(r.text, features="lxml")
-            links = soup.findAll('script')
-            page = requests.get(item[1] + links[5].get('src', None))
-
-            self.texts[item[0]] = self.__get_text_from_(page)
-
+            """get the pdf link"""
+            new_item = (item[0], self._get_pdf_link(item))
+            self._load_pdf(new_item)
         else:
-            """download the file and then get the text"""
-            full_path = self.__write_file(item)
-            text = textract.process(full_path)
-            text = text.decode("utf-8")
+            """get the pdf file"""
+            self._load_pdf(item)
 
-            self.texts[item[0]] = text
+    def _get_pdf_link(self, item):
+        driver = self._get_driver()
+        driver.get(item[1])
+        return driver.execute_script('return bookConfig.DownloadURL')
 
-    @staticmethod
-    def __get_text_from_(page):
-        """getting the text and manipiulating it (because it's hebrew)"""
-        text = page.text.encode("latin1").decode("utf-8")
-        text = re.sub("\s\s+", " ", text)
-        text_copy = re.sub('[^\W]', ' ', text)
-        chars = re.split(' ', text_copy)
-        # loop over all the characters
-        for char in chars[:]:
-            # find the chars of unicode Cf
-            if char == '' or len(char) != 1 or char in punctuation:
-                continue
-            text = re.sub(char, ' ', text)
-        return text
+    @timer
+    def _load_pdf(self, item):
+        """a function to get the text from a pdf file"""
+        full_path = self.__write_file(item)
+        text = textract.process(full_path)
+        text = text.decode("utf-8")
+        self.__delete_file(item[0])
 
+        self.texts[item[0]] = text
+
+    def __delete_file(self, name):
+        """
+        because i don't need the file to hang around after i take it's text
+        i will delete it
+        """
+        file_path = os.path.join(self.dir.path, name + '.pdf')
+        os.remove(file_path)
+
+    @timer
     def __write_file(self, item):
         """writing the file and returning a path to the file"""
-        req = requests.get(item[1])
-        full_path = os.path.join(self.__path, item[0])
+        req = requests.get(item[1], stream=True)
+        full_path = os.path.join(self.dir.path, item[0] + '.pdf')
         with open(full_path, "wb") as f:
             for chunk in req.iter_content(chunk_size=8192):
                 f.write(chunk)
         return full_path
 
-    def __destroy_dir(self):
-        try:
-            shutil.rmtree(self.__path)
-        except OSError as e:
-            print("Error: %s : %s" % (self.__path, e.strerror))
 
 class TFIDF():
     """Finding nemo!"""
@@ -206,8 +223,8 @@ class TFIDF():
             stopwords = list(text.split('\n'))
         return stopwords
 
-    @timer
-    def _compute_idfs(self, tokened_dict):
+    @staticmethod
+    def _compute_idfs(tokened_dict):
         """
         Given a dictionary of `documents` that maps names of documents to a list
         of words, return a dictionary that maps words to their IDF values.
@@ -297,22 +314,122 @@ class TFIDF():
 
 
 
-"""
-muy importante
-"""
-# r = requests.get(file_url)
-#     # print(r.encoding)
-#     soup = bs(r.text, features="lxml")
-#     text = soup.text.encode("latin1").decode("utf-8")
-#     text = re.sub("\s\s+", " ", text)
-
-
-
-#     def load(self):
-#         for link in
-
-
-
-"""
-opening files
-"""
+# class LoadText:
+#     """a class to load all the text to a dict"""
+#     """
+#     check for the files type
+#     load it to the dir
+#     get the text
+#     load to the dict
+#     """
+#     def __init__(self, subject_links):
+#         # a dict of the links and the headers
+#         self.__micro_subject_links = subject_links
+#         # path to new_dir and making a new dir
+#         self.__path = None
+#         # a dict for text_name[name] = text
+#         self.texts = {}
+#
+#     @staticmethod
+#     def _get_driver(chrome_path='chromedriver.exe'):
+#         """opening the chrome driver once"""
+#         option = webdriver.ChromeOptions()
+#         option.add_argument('headless')
+#         driver = webdriver.Chrome(chrome_path,
+#                                   options=option)
+#         return driver
+#
+#     @timer
+#     def get_texts(self):
+#         """this is the interface!"""
+#         self.__path = self.__make_dir()
+#         # loads the files to the dict
+#         self.__load_files()
+#         # parsers the dict
+#         self.__destroy_dir()
+#
+#         return self.texts
+#
+#     def __make_dir(self):
+#         """
+#         make a new dir and return the path to that dir
+#         """
+#         if self.__path is not None:
+#             self.__destroy_dir()
+#         # get the current dir
+#         dir_path = os.path.dirname(os.path.realpath(__file__))
+#
+#         # make a new dir
+#         dir_name = "files"
+#         path = os.path.join(dir_path, dir_name)
+#         os.mkdir(path)
+#
+#         return path
+#
+#     def __load_files(self):
+#         with cf.ThreadPoolExecutor() as executor:
+#             executor.map(self.__all_the_work, self.__micro_subject_links.items())
+#
+#     def __all_the_work(self, item):
+#         """responsible for, checking the type, uploading it to the dict"""
+#         file_type = self.__check_for_type(item[1])
+#         if file_type == any(bad_types):
+#             return
+#         else:
+#             self.__load_the_file(file_type, item)
+#
+#     @staticmethod
+#     def __check_for_type(link):
+#         """this function will check for a certain link type of file"""
+#         for file_type in types:
+#             if file_type in link:
+#                 return file_type
+#
+#     def __load_the_file(self, file_type, item):
+#         if file_type == flip:
+#             """get the pdf link"""
+#             new_item = (item[0], self._get_pdf_link(item))
+#             self._load_pdf(new_item)
+#         else:
+#             """get the pdf file"""
+#             self._load_pdf(item)
+#
+#     def _get_pdf_link(self, item):
+#         driver = self._get_driver()
+#         driver.get(item[1])
+#         return driver.execute_script('return bookConfig.DownloadURL')
+#
+#     @timer
+#     def _load_pdf(self, item):
+#         """a function to get the text from a pdf file"""
+#         full_path = self.__write_file(item)
+#         text = textract.process(full_path)
+#         text = text.decode("utf-8")
+#         self.__delete_file(item[0])
+#
+#         self.texts[item[0]] = text
+#
+#     def __delete_file(self, name):
+#         """
+#         because i don't need the file to hang around after i take it's text
+#         i will delete it
+#         """
+#         file_path = os.path.join(self.__path, name + '.pdf')
+#         os.remove(file_path)
+#
+#     @timer
+#     def __write_file(self, item):
+#         """writing the file and returning a path to the file"""
+#         req = requests.get(item[1], stream=True)
+#         full_path = os.path.join(self.__path, item[0] + '.pdf')
+#         with open(full_path, "wb") as f:
+#             for chunk in req.iter_content(chunk_size=8192):
+#                 f.write(chunk)
+#         return full_path
+#
+#     def __destroy_dir(self):
+#         """this takes a lot of fucking time"""
+#         try:
+#             shutil.rmtree(self.__path)
+#         except OSError as e:
+#             print("Error: %s : %s" % (self.__path, e.strerror))
