@@ -1,5 +1,6 @@
 from page import *
 from helper import *
+import requests
 
 # THE MAIN URL
 url_main = "https://www.iroads.co.il/"
@@ -11,35 +12,21 @@ def main():
     page = FrontPage()
 
     # making a dict of options-links -- function
-    main_subs_links = read_subjects(url_main, filter)
+    header_finder = GetHeaders(page.root, url_main, filter)
+    main_subs_links = header_finder.get_hrefs()
 
     # making the dropdown, label and a button -- class
-    main_menu = DisplayMenu(page.root, ":מה הנושא המרכזי", main_subs_links.keys(), True,
-                            main_subs_links, url_main)
-    display_menus.append(main_menu)
-    main_menu.pack()
+    main_menu = DisplayMenu1(page.root, ":מה הנושא המרכזי", main_subs_links.keys(), main_subs_links, url_main)
+    main_menu.show()
 
     page.root.mainloop()
 
     """ checking things"""
-    # listing()
-    # req = requests.get('http://online.fliphtml5.com/kfky/pzdc/#p=1')
-    # full_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test")
-    # with open(full_path, "wb") as f:
-    #     for chunk in req.iter_content(chunk_size=8192):
-    #         f.write(chunk.e)
 
 
-# @timer
-# def listing():
-#     with open('hebrew.txt', encoding="utf8") as f:
-#         text = f.read()
-#         stopwords = list(text.split('\n'))
-#     print(stopwords)
-
-# b = "הפקעות‪/‬מלווים סטאטוטוריים‪/‬מתכנן גיאומטריה‪/‬מתכנן‬ ‫מוביל‪/‬מנה\"פ"
-#
-# c = לפרויקט \"אופני‪-‬דן\" (סימוכין ‬‫‪ )1‬ ולפי  פרק
+def checking_gens(full_path):
+    text = textract.process(full_path)
+    yield text.decode("utf-8")
 
 
 if __name__ == '__main__':
