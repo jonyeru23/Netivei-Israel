@@ -2,10 +2,42 @@ from magic import *
 from tkhtmlview import HTMLLabel
 
 
-"""
-this is a global list of all the display menus
-"""
-display_menus = []
+class ListOfObjects:
+    """job: handle adding and removing objects from the list of objects"""
+
+    def __init__(self):
+        self._objects = []
+
+    def append(self, widjet):
+        self._objects.append(widjet)
+
+    def removing_items(self, which_menu):
+        if self._is_click_not_valid(which_menu):
+                self._looping_through_items(which_menu)
+
+    def _is_click_not_valid(self, which_menu):
+        if len(self._objects) > which_menu:
+            return True
+        else:
+            return False
+
+    def _looping_through_items(self, which_menu):
+        for index, item in enumerate(self._objects[:]):
+            if self._is_bigger(index, which_menu):
+                continue
+            self._remove_item(item)
+
+    def _remove_item(self, widjet):
+        widjet.remove()
+        self._objects.remove(widjet)
+
+    @staticmethod
+    def _is_bigger(index, which_menu):
+        return True if index < which_menu else False
+
+
+display_menus = ListOfObjects()
+
 
 class FrontPage:
     """
@@ -20,144 +52,209 @@ class FrontPage:
 
 
 class GetHeaders:
+    def __init__(self, root, url_main, the_filter):
+        self._root = root
+        self._url_main = url_main
+        self._the_filter = the_filter
+        self.hrefs = {}
+
+    def get_hrefs(self):
+        """
+        get me the subjects and return
+        a dict of option - href
+        """
+        html = self._get_request()
+        if html is None:
+            return
+        return self._loop_over_tags(html)
+
+    def _get_request(self):
+        try:
+            return requests.get(self._url_main).text
+        except ConnectionError:
+            self._show_state_to_user()
+            return
+
+    def _show_state_to_user(self):
+        no_internet = UserCheck(self._root, "אין חיובר אינטרנט, נא לבדוק את החיבור")
+        no_internet.show()
+
+    @staticmethod
+    def _get_html_elements(html, tag, class_):
+        soup = bs(html, features="lxml")
+        tags = soup.findAll(tag, class_=class_)
+        return tags
+
+    def _loop_over_tags(self, html):
+        for tag in self._get_html_elements(html, 'a', 'infoIcon'):
+            link = tag.get('href', None)
+            if link is None:
+                continue
+            if self._the_filter in link:
+                self._add_option(tag, link)
+        return self.hrefs
+
+    def _add_option(self, tag, link):
+        option = tag.figcaption.string
+        self.hrefs[option] = link
+
+
+class GetSubHeaders(GetHeaders):
     """
     A class to get the dict with the names of the
     options and links (using threading)
     """
-    def __init__(self, clicked, hrefs, url_main):
-        self.clicked = clicked
-        self.hrefs = hrefs
-        self.url_main = url_main
+    def __init__(self, root, clicked, hrefs, url_main):
+        super().__init__(root, url_main, the_filter="מידע לספקים")
+        self._clicked = clicked
+        self._sub_hrefs = hrefs
+        self._subject_url = self._get_url_request()
+        self._spec_links = {}
         self.subs_links = {}
-        self.subject_url = self.get_subject_url()
 
     def get_subject_url(self):
-        url = requests.get(self.url_main, self.hrefs[self.clicked][1:-1])
-        return requests.get(url.url.replace('?', ''))
+        return self._subject_url.url
 
-    @timer
     def get_headers(self):
         """
         function will return a dict of headers-links
         """
-        # get the soup
-        soup = bs(self.subject_url.text, features="lxml")
-
-        # get the relevant headers
-        bigs = soup.findAll('div', class_='container-fluid col9')
-
+        bigs = self._get_html_elements(self._subject_url.text, 'div', 'container-fluid col9')
         with cf.ThreadPoolExecutor() as executor:
-            executor.map(self.parser_head_link, bigs)
+            executor.map(self._parser_head_link, bigs)
         return self.subs_links
 
-    def parser_head_link(self, big):
+    def _get_url_request(self):
         try:
-            raw_links = big.ul.findAll('li')
+            url = requests.get(self._url_main, self._sub_hrefs[self._clicked][1:-1])
+            return requests.get(url.url.replace('?', ''))
+        except ConnectionError:
+            self._show_state_to_user()
+
+    def _parser_head_link(self, big):
+        raw_links = self._get_raw_links(big)
+        if raw_links is None:
+            return
+        self._spec_links = {}
+        for raw in raw_links:
+            self._build_dict(raw)
+        self.subs_links[big.article.h2.text] = self._spec_links
+
+    def _build_dict(self, raw):
+        try:
+            self._spec_links[self._get_name(raw)] = self._get_href(raw)
+        except AttributeError:
+            self._show_error(raw)
+
+    @staticmethod
+    def _get_href(raw):
+        return raw.div.div.a.get('href', None)
+
+    @staticmethod
+    def _get_name(raw):
+        return raw.div.h2.text.replace('\n', '')
+
+    def _show_error(self, raw):
+        bad = UserCheck(self._root, f"לא הצלחנו להגיע ל{raw.div.h2.text}")
+        bad.show()
+
+    @staticmethod
+    def _get_raw_links(big):
+        try:
+            return big.ul.findAll('li')
         except AttributeError:
             return
-        # i want to create a dict with the subjects and links
-        # and then add it to the big dict
-        spec_links = {}
-        for raw in raw_links:
-            try:
-                spec_links[raw.div.h2.text.replace('\n', '')] = raw.div.div.a.get('href', None)
-            except AttributeError:
-                print(raw.div.h2.text)
-        self.subs_links[big.article.h2.text] = spec_links
-
 
 
 class DisplayMenu:
     """
-    this class is for creating the label and the option menu. that's it!
+    the father class to create the two display menus
     """
-    def __init__(self, root, text, options, first, sub_links, url):
+    def __init__(self, root, text, options, sub_links, url):
         self.root = root
         self.clicked = StringVar()
         self.clicked.set("לא נחבר")
-        self.first = first
+        self.sub_links = sub_links
+        self.url = url
 
+        self._make_l_d_b(text, options)
+
+    def _make_l_d_b(self, text, options):
         self.label = Label(self.root, text=text)
         self.drop = OptionMenu(self.root, self.clicked, *options)
-        self.button = MyButton(self, sub_links, url)
+        self.button = Button(self.root, text="!בחרתי", command=self._get)
 
-    def pack(self):
+    def show(self):
         self.label.pack()
         self.drop.pack()
-        self.button.button.pack()
+        self.button.pack()
+        display_menus.append(self)
 
     def remove(self):
         self.label.destroy()
         self.drop.destroy()
-        self.button.button.destroy()
+        self.button.destroy()
+
+    def _get(self):
+        pass
+
+    def _show_bad_user(self):
+        bad = UserCheck(self.root, "נא לבחור אופציה")
+        bad.show()
 
 
-class MyButton:
-    """
-    the class for the buttons of the program
-    """
-    def __init__(self, menu, sub_links, url):
-        self.sub_links = sub_links
-        self.url = url
-        self.menu = menu
-        self.button = Button(self.menu.root, text="!בחרתי", command=self.get)
+class DisplayMenu1(DisplayMenu):
+    """the first one """
+    def _get(self):
+        display_menus.removing_items(1)
+        # find the subs -- function
+        subject_url, sub_subs_links = self._get_url_links()
+        if subject_url is None or sub_subs_links is None:
+            return
+        # create another display menu
+        self._catch_display_menu(sub_subs_links, subject_url)
 
-    def get(self):
+    def _get_url_links(self):
+        try:
+            header = GetSubHeaders(self.root, str(self.clicked.get()), self.sub_links, self.url)
+            return header.get_subject_url(), header.get_headers()
+        except KeyError:
+            self._show_bad_user()
+            return None, None
+
+    def _catch_display_menu(self, sub_subs_links, subject_url):
+        try:
+            self._make_menu(sub_subs_links, subject_url)
+        except (TypeError, AttributeError):
+            self._catch_error()
+
+    def _make_menu(self, sub_subs_links, subject_url):
+        sub_menu = DisplayMenu2(self.root, ":מה הנושא המשני", sub_subs_links.keys(), sub_subs_links,
+                                subject_url)
+        sub_menu.show()
+
+    def _catch_error(self):
+        self._show_bad_user()
+
+
+class DisplayMenu2(DisplayMenu):
+    """the second one"""
+    def _get(self):
         """
-        if it is the first option menu create the second one
-        if it's the second, ask the question and make the magic happen
+        ask the fucking question
         """
-        if self.menu.first:
-            self.__cleaning_menus(1)
-            # find the subs -- function
-            try:
-                header = GetHeaders(str(self.menu.clicked.get()), self.sub_links, self.url)
-                subject_url = header.subject_url
-                sub_subs_links = header.get_headers()
+        display_menus.removing_items(2)
+        self._try_2_ask()
 
-                # create another display menu
-                try:
-                    sub_menu = DisplayMenu(self.menu.root, ":מה הנושא המשני", sub_subs_links.keys(), False,
-                                           sub_subs_links, subject_url)
-                    display_menus.append(sub_menu)
-                    sub_menu.pack()
+    def _try_2_ask(self):
+        try:
+            self._ask_the_question()
+        except KeyError:
+            self._show_bad_user()
 
-                except (TypeError, AttributeError):
-                    bad = NoHeads(self.menu.root, ":אין כותרות זמינות, לגישה לדף לחץ על הקישור", subject_url.url)
-                    display_menus.append(bad)
-                    bad.pack()
-
-            except KeyError:
-                bad = UserCheck(self.menu.root, "נא לבחור אופציה")
-                display_menus.append(bad)
-                bad.pack()
-
-        else:
-            """
-            ask the fucking question
-            """
-            self.__cleaning_menus(2)
-            # it's recursive
-            try:
-                question = TheQuestion(self.menu.root, self.sub_links[self.menu.clicked.get()])
-                question.show()
-                display_menus.append(question)
-            except KeyError:
-                bad = UserCheck(self.menu.root, "נא לבחור אופציה")
-                display_menus.append(bad)
-                bad.pack()
-
-    @staticmethod
-    def __cleaning_menus(which_menu):
-        start_length = len(display_menus)
-        if start_length > which_menu:
-            print(f"wich: {which_menu}")
-            print(start_length)
-            for i, item in enumerate(display_menus[:]):
-                if i < which_menu:
-                    continue
-                item.remove()
-                display_menus.remove(item)
+    def _ask_the_question(self):
+        question = TheQuestion(self.root, self.sub_links[self.clicked.get()])
+        question.show()
 
 
 class UserCheck:
@@ -168,8 +265,9 @@ class UserCheck:
     def remove(self):
         self.bad_label.destroy()
 
-    def pack(self):
+    def show(self):
         self.bad_label.pack()
+        display_menus.append(self)
 
 
 class NoHeads(UserCheck):
@@ -181,9 +279,10 @@ class NoHeads(UserCheck):
         self.bad_label.destroy()
         self.link_label.destroy()
 
-    def pack(self):
+    def show(self):
         self.bad_label.pack()
         self.link_label.pack()
+        display_menus.append(self)
 
 
 class TheQuestion:
@@ -195,6 +294,7 @@ class TheQuestion:
     def show(self):
         self.input.pack()
         self.dif_button.pack()
+        display_menus.append(self)
 
     def remove(self):
         self.input.destroy()
@@ -205,6 +305,6 @@ class TheQuestion:
         loading = LoadText(self.subject_links)
         # get the dict
         texts = loading.get_texts()
-
+        the_answer = TFIDF(texts, self.input)
 
         print("fuck")
