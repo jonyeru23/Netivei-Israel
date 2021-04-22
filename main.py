@@ -1,6 +1,5 @@
 from page import *
 from helper import *
-import requests
 
 # THE MAIN URL
 url_main = "https://www.iroads.co.il/"
@@ -16,17 +15,25 @@ def main():
     main_subs_links = header_finder.get_hrefs()
 
     # making the dropdown, label and a button -- class
-    main_menu = DisplayMenu1(page.root, ":מה הנושא המרכזי", main_subs_links.keys(), main_subs_links, url_main)
+    main_menu = DisplayMenu1(page.root, ":מה הנושא המרכזי", main_subs_links, url_main)
     main_menu.show()
 
     page.root.mainloop()
 
     """ checking things"""
-
-
-def checking_gens(full_path):
-    text = textract.process(full_path)
-    yield text.decode("utf-8")
+    # i = 5
+    # url = "http://online.fliphtml5.com/kfky/pzdc/" + f"#p={i}"
+    # req = requests.get(url)
+    # print(req.url)
+#     # make_set_of_word
+#     checker()
+#
+# @timer
+# def checker():
+#     word = "עצירה"
+#     word1 = "עקיפה"
+#     ratio = fuzz.ratio(word, word1)
+#     print(ratio)
 
 
 if __name__ == '__main__':
