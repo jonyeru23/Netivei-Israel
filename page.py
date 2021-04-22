@@ -1,5 +1,8 @@
 from magic import *
 from tkhtmlview import HTMLLabel
+# from tk_html_widgets import HTMLLabel
+from ttkthemes import ThemedTk
+from tkinter import ttk
 
 
 class ListOfObjects:
@@ -13,7 +16,7 @@ class ListOfObjects:
 
     def removing_items(self, which_menu):
         if self._is_click_not_valid(which_menu):
-                self._looping_through_items(which_menu)
+            self._looping_through_items(which_menu)
 
     def _is_click_not_valid(self, which_menu):
         if len(self._objects) > which_menu:
@@ -44,11 +47,12 @@ class FrontPage:
     this class is for building the basic basic front
     """
     def __init__(self):
-        self.root = Tk()
-        self.subject = Label(self.root, text="?מה תרצו לדעת").pack()
+        self.root = ThemedTk(themebg=True)
+        self.root.set_theme('adapta')
+        # self.subject = ttk.Label(self.root, text="?מה תרצו לדעת").pack()
         # build the screen
         self.root.title("למצוא את התקן")
-        self.root.geometry("800x800")
+        self.root.geometry("400x420")
 
 
 class GetHeaders:
@@ -71,7 +75,7 @@ class GetHeaders:
     def _get_request(self):
         try:
             return requests.get(self._url_main).text
-        except ConnectionError:
+        except (ConnectionError, TimeoutError):
             self._show_state_to_user()
             return
 
@@ -112,9 +116,6 @@ class GetSubHeaders(GetHeaders):
         self._spec_links = {}
         self.subs_links = {}
 
-    def get_subject_url(self):
-        return self._subject_url.url
-
     def get_headers(self):
         """
         function will return a dict of headers-links
@@ -128,7 +129,7 @@ class GetSubHeaders(GetHeaders):
         try:
             url = requests.get(self._url_main, self._sub_hrefs[self._clicked][1:-1])
             return requests.get(url.url.replace('?', ''))
-        except ConnectionError:
+        except (ConnectionError, TimeoutError):
             self._show_state_to_user()
 
     def _parser_head_link(self, big):
@@ -170,19 +171,17 @@ class DisplayMenu:
     """
     the father class to create the two display menus
     """
-    def __init__(self, root, text, options, sub_links, url):
+    def __init__(self, root, text, sub_links):
         self.root = root
         self.clicked = StringVar()
-        self.clicked.set("לא נחבר")
         self.sub_links = sub_links
-        self.url = url
 
-        self._make_l_d_b(text, options)
+        self._make_l_d_b(text, sub_links.keys())
 
     def _make_l_d_b(self, text, options):
-        self.label = Label(self.root, text=text)
-        self.drop = OptionMenu(self.root, self.clicked, *options)
-        self.button = Button(self.root, text="!בחרתי", command=self._get)
+        self.label = ttk.Label(self.root, text=text)
+        self.drop = ttk.OptionMenu(self.root, self.clicked, "בחר אפשרות", *options)
+        self.button = ttk.Button(self.root, text="!בחרתי", command=self._get)
 
     def show(self):
         self.label.pack()
@@ -202,48 +201,67 @@ class DisplayMenu:
         bad = UserCheck(self.root, "נא לבחור אופציה")
         bad.show()
 
-
-class DisplayMenu1(DisplayMenu):
-    """the first one """
-    def _get(self):
-        display_menus.removing_items(1)
-        # find the subs -- function
-        subject_url, sub_subs_links = self._get_url_links()
-        if subject_url is None or sub_subs_links is None:
-            return
-        # create another display menu
-        self._catch_display_menu(sub_subs_links, subject_url)
-
-    def _get_url_links(self):
+    def _catch_display_menu(self, sub_subs_links):
         try:
-            header = GetSubHeaders(self.root, str(self.clicked.get()), self.sub_links, self.url)
-            return header.get_subject_url(), header.get_headers()
-        except KeyError:
-            self._show_bad_user()
-            return None, None
-
-    def _catch_display_menu(self, sub_subs_links, subject_url):
-        try:
-            self._make_menu(sub_subs_links, subject_url)
+            self._make_menu(sub_subs_links)
         except (TypeError, AttributeError):
             self._catch_error()
 
-    def _make_menu(self, sub_subs_links, subject_url):
-        sub_menu = DisplayMenu2(self.root, ":מה הנושא המשני", sub_subs_links.keys(), sub_subs_links,
-                                subject_url)
+    def _make_menu(self, sub_subs_links):
+        sub_menu = DisplayMenu2(self.root, ":מה הנושא המשני", sub_subs_links)
         sub_menu.show()
 
     def _catch_error(self):
         self._show_bad_user()
 
 
+class DisplayMenu1(DisplayMenu):
+    def __init__(self, root, text, sub_links, url):
+        super().__init__(root, text, sub_links)
+        self.url = url
+    """the first one """
+    def _get(self):
+        display_menus.removing_items(1)
+        # find the subs -- function
+        sub_subs_links = self._get_url_links()
+        if sub_subs_links is None:
+            return
+        # create another display menu
+        self._catch_display_menu(sub_subs_links)
+
+    def _get_url_links(self):
+        try:
+            header = GetSubHeaders(self.root, str(self.clicked.get()), self.sub_links, self.url)
+            return header.get_headers()
+        except KeyError:
+            self._show_bad_user()
+            return None, None
+
+
 class DisplayMenu2(DisplayMenu):
+    def _get(self):
+        display_menus.removing_items(2)
+
+        self._catch_display_menu2()
+
+    def _catch_display_menu2(self):
+        try:
+            self._make_menu2()
+        except (TypeError, AttributeError):
+            self._catch_error()
+
+    def _make_menu2(self):
+        third = DisplayMenu3(self.root, "?מה המסמך שתרצה לחפש בו", self.sub_links[self.clicked.get()])
+        third.show()
+
+
+class DisplayMenu3(DisplayMenu):
     """the second one"""
     def _get(self):
         """
         ask the fucking question
         """
-        display_menus.removing_items(2)
+        display_menus.removing_items(3)
         self._try_2_ask()
 
     def _try_2_ask(self):
@@ -253,14 +271,14 @@ class DisplayMenu2(DisplayMenu):
             self._show_bad_user()
 
     def _ask_the_question(self):
-        question = TheQuestion(self.root, self.sub_links[self.clicked.get()])
+        question = TheQuestion(self.root, self.clicked.get(), self.sub_links[self.clicked.get()])
         question.show()
 
 
 class UserCheck:
     """ this is for checking the user """
     def __init__(self, root, label_text):
-        self.bad_label = Label(root, text=f"{label_text}")
+        self.bad_label = ttk.Label(root, text=f"{label_text}")
 
     def remove(self):
         self.bad_label.destroy()
@@ -273,7 +291,10 @@ class UserCheck:
 class NoHeads(UserCheck):
     def __init__(self, root, label_text, link):
         super().__init__(root, label_text)
-        self.link_label = HTMLLabel(root, html=f'<a href="{link}"> Link to page </a>')
+        self.link_label = HTMLLabel(root,
+                                    html=f'<a href="{link}">Link to page</a>')
+
+
 
     def remove(self):
         self.bad_label.destroy()
@@ -286,25 +307,92 @@ class NoHeads(UserCheck):
 
 
 class TheQuestion:
-    def __init__(self, root, subject_links):
-        self.subject_links = subject_links
-        self.input = Entry(root)
-        self.dif_button = Button(root, text="?מה השאלה", command=self.go)
+    def __init__(self, root, name, subject_link):
+        self._subject_link = subject_link
+        self._root = root
+        self._input = ttk.Entry(root, width=30)
+        self.dif_button = ttk.Button(self._root, text="?מה השאלה", command=self.go)
+        self._name = name
 
     def show(self):
-        self.input.pack()
+        self._input.pack()
         self.dif_button.pack()
         display_menus.append(self)
 
     def remove(self):
-        self.input.destroy()
+        self._input.destroy()
         self.dif_button.destroy()
 
+    @timer
     def go(self):
-        # initialize the class
-        loading = LoadText(self.subject_links)
-        # get the dict
-        texts = loading.get_texts()
-        the_answer = TFIDF(texts, self.input)
+        display_menus.removing_items(4)
+        input = self._input.get()
+        if len(input) != 0:
+            wait = UserCheck(self._root, "...אל תסגור את התוכנה עכשיו")
+            wait.show()
+            wait.bad_label.update()
 
+            text_extracter = Text(self._name, self._subject_link)
+            wait.remove()
+            wait.bad_label.update()
+
+            hold_on = UserCheck(self._root, "...רק עוד רגע")
+            hold_on.show()
+            hold_on.bad_label.update()
+
+            super_ai = TFIDF(text_extracter.get_text(), input)
+            hold_on.remove()
+
+            top_pages = super_ai.get_top_options()
+            answer_the_man = TheAnswer(self._root, top_pages, self._subject_link)
+            answer_the_man.show()
+        else:
+            bad_user = UserCheck(self._root, "נא לבחור אופציה")
+            bad_user.show()
         print("fuck")
+
+
+class TheAnswer:
+    def __init__(self, root, top_options, file_link):
+        self._root = root
+        self._file_link = file_link
+        self._top_options_links = self._make_links(top_options)
+        print(f"this is the second list: {self._top_options_links}")
+        self._show_answer()
+
+    def _show_answer(self):
+        display_menus.removing_items(5)
+        if self._no_answer():
+            self._show_no_answer()
+        else:
+            self._first = NoHeads(self._root, "!התשובה שלך", self._top_options_links[0])
+            self._list_of_widgets = self._add_widjets()
+
+    def _no_answer(self):
+        return True if len(self._top_options_links) == 0 else False
+
+    def _show_no_answer(self):
+        bad = UserCheck(self._root, "לא נמצאה תשובה, בבקשה לנסח את השאלה טוב יותר")
+        bad.show()
+
+    def _add_widjets(self):
+        my_list = list()
+        my_list.append(self._first)
+        return my_list
+
+    def _make_links(self, top_options):
+        links = []
+        for option in top_options:
+            link = self._file_link + f"#p={option+1}"
+            links.append(link)
+        return links
+
+    def show(self):
+        for widjet in self._list_of_widgets:
+            widjet.show()
+
+    def remove(self):
+        for widjet in self._list_of_widgets:
+            widjet.remove()
+
+
