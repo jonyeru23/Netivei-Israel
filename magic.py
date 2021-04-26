@@ -12,7 +12,10 @@ import fitz
 import pytesseract
 import cv2
 from fuzzywuzzy import fuzz
-
+import textract
+import requests
+import os
+import regex as re
 
 
 # types for numbers
@@ -26,16 +29,30 @@ jpg = 'jpg'
 types = [jpg, flip, pdf, docx, xsl, zip, wmv]
 bad_types = [wmv, jpg, zip]
 
-class TFIDF:
-    def __init__(self, pages, the_question, n=1, similarity_ratio=89):
+
+class NLPAnalasys:
+    """a class holding functions for all nlp analysis"""
+    def __init__(self, similarity_ratio=89):
+        self._similarity_ratio = similarity_ratio
+
+    def _check_similarity(self, word1, word2):
+        return True if fuzz.ratio(word1, word2) > self._similarity_ratio else False
+
+
+class TFIDF(NLPAnalasys):
+    def __init__(self, pages, the_question, n=1):
+        super().__init__()
         self._pages = pages
         self._tokened_dict = {}
         self._idfs = {}
         self._n = n
-        self._similarity_ratio = similarity_ratio
         self._stop_words = self._get_stop_words_hebrew('hebrew.txt')
         self._the_question = self._tokenizer(the_question)
 
+    def get_tokened_dict(self):
+        return self._tokened_dict
+
+    @timer
     def get_top_options(self):
         self._tokenize_dict()
         self._compute_idfs()
@@ -46,18 +63,20 @@ class TFIDF:
         """takes the words in the .txt and makes it a list"""
         with open(filename, encoding="utf8") as f:
             text = f.read()
-            stopwords = list(text.split('\n'))
+            stopwords = set(text.split('\n'))
         return stopwords
 
     def _tokenize_dict(self):
-        for name, words in self._pages.items():
-            self._tokened_dict[name] = self._tokenizer(words)
+        for name, text in self._pages.items():
+            self._tokened_dict[name] = self._tokenizer(text)
 
     def _tokenizer(self, text):
         words = nltk.word_tokenize(text)
-        return [word for word in words if word not in punctuation
-                and word not in self._stop_words
-                and word != " "]
+        bag_of_words = list()
+        for word in words:
+            if word not in punctuation and word not in self._stop_words and word != " ":
+                bag_of_words.append(word)
+        return bag_of_words
 
     def _compute_idfs(self):
         """
@@ -70,26 +89,25 @@ class TFIDF:
         i will keep track of words i saw in each doc to make sure i dont dubble increment
         after i loopes over all the docs, i will make all the words and give them the log value
         """
+        """compute the idf value for the words in the question alone"""
+        self._idfs = dict.fromkeys(set(self._the_question), 0)
         for name, text in self._tokened_dict.items():
-            seen = set()
-            for word in text:
-                if self._is_in_seen(word, seen):
-                    continue
-                else:
-                    self._add_word_to_idfs(word)
-                    seen.add(word)
-
+            for q_word in set(self._the_question):
+                if self._is_in_data(text, q_word):
+                    self._idfs[q_word] += 1
         self._make_idfs_log()
 
-    def _is_in_seen(self, seen, word):
-        for seen_word in seen:
-            if self._check_similarity(word, seen_word):
+    def _is_in_data(self, data, word):
+        for data_word in data:
+            if self._check_similarity(word, data_word):
                 return True
         return False
 
     def _make_idfs_log(self):
-        for word in self._idfs:
-            self._idfs[word] = log((len(self._tokened_dict) / self._idfs[word]), e)
+        for word, value in self._idfs.items():
+            if value == 0:
+                continue
+            self._idfs[word] = log((len(self._tokened_dict) / value), e)
 
     def _add_word_to_idfs(self, word):
         for key in self._idfs:
@@ -99,7 +117,7 @@ class TFIDF:
         self._idfs[word] = 1
 
     def _get_top_keys(self):
-        ranking = self.set_rankings()
+        ranking = dict.fromkeys(self._tokened_dict.keys(), 0)
         for word in self._the_question:
             if self._not_important(word):
                 continue
@@ -117,9 +135,6 @@ class TFIDF:
                 word_counter += 1
         return word_counter * self._idfs[word]
 
-    def _check_similarity(self, word1, word2):
-        return True if fuzz.ratio(word1, word2) > self._similarity_ratio else False
-
     def _get_list_of_best_keys(self, ranking):
         the_keys = []
         for i in range(self._n):
@@ -127,7 +142,10 @@ class TFIDF:
             if self._key_not_good_enough(best_key):
                 return the_keys
             the_keys.append(best_key)
-            ranking.pop(best_key)
+            try:
+                ranking.pop(best_key)
+            except KeyError:
+                pass
 
         return the_keys
 
@@ -140,12 +158,6 @@ class TFIDF:
             return True
         return False
 
-    def set_rankings(self):
-        ranking = {}
-        for key in self._tokened_dict:
-            ranking[key] = 0
-        return ranking
-
     @staticmethod
     def _get_highest_key_by_value(ranking):
         highest_value = -inf
@@ -157,242 +169,43 @@ class TFIDF:
         return best_key
 
 
-class HeadersIDFS(TFIDF):
-    """this is for experiments, the exact numbers will be decided"""
-    def get_top_options(self):
-        self._tokenize_dict()
-        self._compute_idfs()
-        return self._get_top_keys()
+class AnswerTensity(NLPAnalasys):
+    def __init__(self, tokened_dict, best_keys, the_question):
+        super().__init__()
+        self._tokened_dict = tokened_dict
+        self._best_keys = best_keys
+        self._the_question = the_question
 
-    def _get_list_of_best_keys(self, ranking):
-        ranking_copy = ranking.copy()
-        for key, value in ranking_copy.items():
-            if value == 0:
-                ranking.pop(key)
-        if len(ranking) == 0:
-            return ranking_copy.keys()
-        else:
-            return ranking.keys()
-
-    def _get_idf_value(self, word, text):
-        """dealing with hebrew polymorphisism and egnoring
-        the number of times the word appears"""
-        for word_of_text in text:
-            if word in word_of_text:
-                return self._idfs[word]
-        return 0
+    def get_the_best_page(self):
+        dict_q_positioning = self._get_positions()
 
 
-class FilesIDFS(TFIDF):
-    def _get_idf_value(self, word, text):
-        """dealing with hebrew polymorphisism
-        taking into account the number of times the word appears"""
-        counter = 0
-        for word_of_text in text:
-            if word in word_of_text:
-                counter += 1
-        return counter * self._idfs[word]
+    def _get_positions(self):
+        dict_q_positioning = {}
+        for key in self._best_keys:
+            q_word_positioning = {}
+            for q_word in self._the_question:
+                postions = list()
+                for position, word in enumerate(self._tokened_dict[key]):
+                    if self._check_similarity(q_word, word):
+                        postions.append(postions)
+                q_word_positioning[q_word] = postions
+            dict_q_positioning[key] = q_word_positioning
+        return dict_q_positioning
 
 
-class FFTFIDF():
-    """Finding nemo!"""
-
-    def __init__(self, texts, the_questions, n=1):
-        self._n = n
-        self._stop_words = self._get_stop_words_hebrew('hebrew.txt')
-        self._documents = texts
-        self._tokened_docs = {}
-        self._sentences = {}
-        self._the_questions = the_questions
-
-
-    def get_answer(self):
-        """all the work"""
-        # tokenized the documents
-        for name, text in self._documents.items():
-            self._tokened_docs[name] = self._tokenizer(text)
-
-        # compute the idfs
-        docs_idfs = self._compute_idfs(self._tokened_docs)
-
-        # get the top files
-        top_files = self._top_keys(docs_idfs, self._tokened_docs, True)
-
-        # get the top sentences
-        for file in top_files:
-            self._get_sentences(file)
-
-        for name, text in self._sentences.copy().items():
-            self._sentences[name] = self._tokenizer(text)
-
-        sentences_idfs = self._compute_idfs(self._sentences)
-
-        top_sentences = self._top_keys(sentences_idfs, self._sentences, False)
-
-        return top_sentences
-
-
-    def _get_sentences(self, name):
-        """making a doc a dict of sentences"""
-        text = self._documents[name]
-
-        split_text = re.split(".", text)
-
-        for sentence in split_text:
-            self._sentences[sentence] = re.split(' ', sentence)
-    #
-    # # Extract sentences from top files
-    # sentences = dict()
-    # for filename in filenames:
-    #     for passage in files[filename].split("\n"):
-    #         for sentence in nltk.sent_tokenize(passage):
-    #             tokens = tokenize(sentence)
-    #             if tokens:
-    #                 sentences[sentence] = tokens
-
-    def _tokenizer(self, text):
-        """make every string given a list of space or punctuation marks separated tokens"""
-        words = nltk.word_tokenize(text)
-        return [word for word in words if word not in punctuation
-                and word not in self._stop_words
-                and word != " "]
-
-    @staticmethod
-    def _get_stop_words_hebrew(filename):
-        """takes the words in the .txt and makes it a list"""
-        with open(filename, encoding="utf8") as f:
-            text = f.read()
-            stopwords = list(text.split('\n'))
-        return stopwords
-
-    @staticmethod
-    def _compute_idfs(tokened_dict):
-        """
-        Given a dictionary of `documents` that maps names of documents to a list
-        of words, return a dictionary that maps words to their IDF values.
-        Any word that appears in at least one of the documents should be in the
-        resulting dictionary.
-        how to do:
-        loop over each doc, when i see a new word i add it to the dict and i++ to it's value,
-        i will keep track of words i saw in each doc to make sure i dont dubble increment
-        after i loopes over all the docs, i will make all the words and give them the log value
-        """
-        # make thereturned dict
-        idf = {}
-        # get the number of the docs
-        num_docs = len(tokened_dict)
-
-        # loop over each doc
-        for name, text in tokened_dict.items():
-            seen = set()
-            # loop over each word
-            for word in text:
-                # if the word was seen in the doc continue
-                if word in seen:
-                    continue
-                # else, check if it exists in dict, if so i++ if not i = 0
-                else:
-                    if word in idf:
-                        idf[word] += 1
-                    else:
-                        idf[word] = 1
-                    seen.add(word)
-
-        # make it logarithmic
-        for word in idf:
-            idf[word] = log((num_docs / idf[word]), e)
-
-        return idf
-
-    def _top_keys(self, idf, tokened_dict, is_file):
-        """
-        Given a `query` (a set of words), `files` (a dictionary mapping names of
-        files to a list of their words), and `idfs` (a dictionary mapping words
-        to their IDF values), return a list of the filenames of the the `n` top
-        files that match the query, ranked according to tf-idf.
-        the how:
-        make a dict with ranking for each doc (doc as key and grade as value)
-        iterate over all the words in the query,
-        if a word is stopword, continue
-        else, calculate her tf-idf and add it to the value of the dict
-        the dict with the hiesght value wins
-        """
-        # make the dict
-        ranking = {}
-        for file in tokened_dict:
-            ranking[file] = 0
-
-        # iterate over the query
-        for word in self._the_questions:
-            if word in self._stop_words or word not in idf:
-                continue
-
-            # term frequency and idf
-            for key, text in tokened_dict.items():
-                if is_file:
-                    ranking[key] += text.count(word) * idf[word]
-                else:
-                    # in other words, if the word is in a sentence rank it higher
-                    if word in text:
-                        ranking[key] += idf[word]
-
-        the_keys = []
-        for i in range(self._n):
-            best_key = self._get_highest_key_by_value(ranking)
-            the_keys.append(best_key)
-            ranking.pop(best_key)
-
-        return the_keys
-
-    @staticmethod
-    def _get_highest_key_by_value(ranking):
-        highest_value = -inf
-        best_key = None
-        for key, grade in ranking.items():
-            if grade > highest_value:
-                best_key = key
-                highest_value = grade
-        return best_key
-
-
-class TextDict:
-    def __init__(self, subject_links):
-        self._micro_subject_links = subject_links
-        self._files = Dir()
-        self._texts = {}
-
-    def get_texts(self):
-        self._make_texts()
-        print(len(self._texts))
-        return self._texts
-
-    def _make_texts(self):
-        """this is the interface!"""
-        self._files.make_dir()
-        # loads the files to the dict
-        self._load_files()
-        # parsers the dict
-        self._files.destroy_dir()
-
-    def _load_files(self):
-        with cf.ThreadPoolExecutor() as executor:
-            executor.map(self._all_the_work, self._micro_subject_links.items())
-
-    def _all_the_work(self, item):
-        """responsible for, checking the type, uploading it to the dict"""
-        text_object = Text(item[0], item[1])
-        if self._is_text_valid(text_object.get_text()):
-            self._texts[text_object.get_name()] = text_object.get_text()
-
-    @staticmethod
-    def _is_text_valid(text):
-        return True if text is not None else False
-
-
-class Text:
+class TexT:
     def __init__(self, name, url):
         self._file = File(name, url)
-        self._text = self._extract_text()
+        self._text = {}
+        if self._file.write_file():
+            self._document = self.open_file()
+            self._extract_text()
+            self._document.close()
+            self._file.delete_file()
+
+    def get_download_url(self):
+        return self._file.get_download_url()
 
     def get_name(self):
         return self._file.get_name()
@@ -400,50 +213,72 @@ class Text:
     def get_text(self):
         return self._text
 
+    @timer
+    def open_file(self):
+        return fitz.open(self._file.get_name(), filetype="pdf")
+
+    @timer
     def _extract_text(self):
-        if self._file.write_file():
-            text = self._extract_text_by_pages()
-            self._file.delete_file()
-            return text
-        return None
+        self._extract_text_by_pages()
 
     def _extract_text_by_pages(self):
-        text = {}
-        image_path = "page.png"
-        document = fitz.open(self._file.get_name())
-        for page_num in range(document.page_count):
-            page = document.load_page(page_num)
-            page_text = page.get_text()
-            length_of_page = len(page_text)
-            if self._is_scanned_image(length_of_page):
-                new_text = self._extract_text_from_image(document, page_num, image_path)
-            else:
-                new_text = self._reverse_string(length_of_page, page_text)
-            text[page_num] = new_text
-        return text
+        pages = self._page_maker()
+        with cf.ThreadPoolExecutor() as executor:
+            executor.map(self._getting_the_txts, pages.items())
+            executor.shutdown(wait=True)
 
-    def _extract_text_from_image(self, document, i, image_path):
-        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract"
-        return pytesseract.image_to_string(self._get_image(document, i, image_path), config='', lang='heb')
+    def _getting_the_txts(self, page_numbers):
+        page_num = page_numbers[0]
+        page = page_numbers[1]
+        length_of_page = len(page.get_text())
+        if self._is_scanned_image(length_of_page):
+            new_text = self._extract_text_from_image(self._document, page_num)
+        else:
+            file_path = f"{page_num}.pdf"
+            pdf = fitz.open()
+            pdf.insert_pdf(self._document, from_page=page_num, to_page=page_num)
+            pdf.save(file_path)
+            new_text = textract.process(file_path)
+            new_text = new_text.decode("utf-8")
+            os.remove(file_path)
+        self._text[page_num] = new_text
+
+    def _extract_text_from_image(self, document, page_num):
+        pytesseract.pytesseract.tesseract_cmd = r"tesseract"
+        return pytesseract.image_to_string(self._get_image(document, page_num), config='', lang='heb')
+
+    def _page_maker(self):
+        pages = {}
+        for page_num in range(self._document.page_count):
+            pages[page_num] = self._document.load_page(page_num)
+        return pages
 
     @staticmethod
-    def _get_image(document, i, image_path):
-        image_list = document.get_page_images(i)
+    def _get_image(document, page_num):
+        image_list = document.get_page_images(page_num)
         xref = image_list[0][0]
         pix = fitz.Pixmap(document, xref)
+
+        image_path = f"{page_num}.png"
         pix.writePNG(image_path)
         img = cv2.imread(image_path)
+
         height, width, _ = img.shape
         if width > height:
             img = cv2.rotate(img, cv2.cv2.ROTATE_90_CLOCKWISE)
+
         os.remove(image_path)
         return img
 
     @staticmethod
-    def _reverse_string(length_of_page, page_text):
+    def _reverse_string(page_text):
         new_text = str()
-        for j in range(length_of_page):
-            new_text += page_text[length_of_page - j - 1]
+        split_text = page_text.split("\n")
+        for line in split_text:
+            new_line = str()
+            for j in range(len(line)):
+                new_line += page_text[len(line) - j - 1]
+            new_text += new_line
         return new_text
 
     @staticmethod
@@ -456,8 +291,11 @@ class File:
     def __init__(self, name, url):
         self._url = Url(url)
         self._download_url = self._url.get_download_link()
-        self._name = name + "." + self._url.type
+        self._name = f"{name}'.'{self._url.type}"
         self._path = self._get_path_to_file()
+
+    def get_download_url(self):
+        return self._download_url
 
     def get_path(self):
         return self._path
@@ -465,6 +303,7 @@ class File:
     def get_name(self):
         return self._name
 
+    @timer
     def write_file(self):
         if self._is_url_not_valid():
             return False
@@ -483,13 +322,15 @@ class File:
         return os.path.dirname(os.path.realpath(__file__))
 
     def _open_write(self, req):
-        with open(rf"{self._name}", "wb") as f:
+        with open(self._make_name_valid(), "wb") as f:
             for chunk in req.iter_content(chunk_size=8192):
                 f.write(chunk)
 
     def _is_url_not_valid(self):
         return True if self._download_url is None else False
 
+    def _make_name_valid(self):
+        return re.sub('\r', '', self._name)
 
 
 class Url:
@@ -556,64 +397,3 @@ class Dir:
     @staticmethod
     def _get_cur_path():
         return os.path.dirname(os.path.realpath(__file__))
-
-
-# class Text:
-#     def __init__(self, name, url):
-#         self._file = File(name, url)
-#         self._text = {}
-#         if self._file.write_file():
-#             self._document = fitz.open(self._file.get_name())
-#             self._extract_text()
-#
-#     def get_name(self):
-#         return self._file.get_name()
-#
-#     def get_text(self):
-#         return self._text
-#
-#     def _extract_text(self):
-#         self._extract_text_by_pages()
-#         self._file.delete_file()
-#
-#     def _extract_text_by_pages(self):
-#         with cf.ThreadPoolExecutor() as executor:
-#             executor.map(self._extract_from_page, range(self._document.page_count))
-#
-#     def _extract_from_page(self, page_num):
-#         image_path = "page.png"
-#         page_doc = self._document.load_page(page_num)
-#         page_text = page_doc.get_text()
-#         length_of_page = len(page_text)
-#         if self._is_scanned_image(length_of_page):
-#             new_text = self._extract_text_from_image(page_num, image_path)
-#         else:
-#             new_text = self._reverse_string(length_of_page, page_text)
-#         self._text[page_num] = new_text
-#
-#     def _extract_text_from_image(self, i, image_path):
-#         pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract"
-#         return pytesseract.image_to_string(self._get_image(i, image_path), config='', lang='heb')
-#
-#     def _get_image(self, i, image_path):
-#         image_list = self._document.get_page_images(i)
-#         xref = image_list[0][0]
-#         pix = fitz.Pixmap(self._document, xref)
-#         pix.writePNG(image_path)
-#         img = cv2.imread(image_path)
-#         height, width, _ = img.shape
-#         if width > height:
-#             img = cv2.rotate(img, cv2.cv2.ROTATE_90_CLOCKWISE)
-#         os.remove(image_path)
-#         return img
-#
-#     @staticmethod
-#     def _reverse_string(length_of_page, page_text):
-#         new_text = str()
-#         for j in range(length_of_page):
-#             new_text += page_text[length_of_page - j - 1]
-#         return new_text
-#
-#     @staticmethod
-#     def _is_scanned_image(length_of_page):
-#         return True if length_of_page == 0 else False
