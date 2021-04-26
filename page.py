@@ -1,8 +1,11 @@
 from magic import *
 from tkhtmlview import HTMLLabel
-# from tk_html_widgets import HTMLLabel
 from ttkthemes import ThemedTk
 from tkinter import ttk
+from tkinter import *
+import webbrowser
+from bs4 import BeautifulSoup as bs
+import requests
 
 
 class ListOfObjects:
@@ -121,8 +124,11 @@ class GetSubHeaders(GetHeaders):
         function will return a dict of headers-links
         """
         bigs = self._get_html_elements(self._subject_url.text, 'div', 'container-fluid col9')
-        with cf.ThreadPoolExecutor() as executor:
-            executor.map(self._parser_head_link, bigs)
+        # with cf.ThreadPoolExecutor() as executor:
+        #     executor.map(self._parser_head_link, bigs)
+        #     executor.shutdown(wait=True)
+        for big in bigs:
+            self._parser_head_link(big)
         return self.subs_links
 
     def _get_url_request(self):
@@ -235,7 +241,7 @@ class DisplayMenu1(DisplayMenu):
             return header.get_headers()
         except KeyError:
             self._show_bad_user()
-            return None, None
+            return None
 
 
 class DisplayMenu2(DisplayMenu):
@@ -246,11 +252,11 @@ class DisplayMenu2(DisplayMenu):
 
     def _catch_display_menu2(self):
         try:
-            self._make_menu2()
-        except (TypeError, AttributeError):
+            self._make_menu3()
+        except (TypeError, AttributeError, KeyError):
             self._catch_error()
 
-    def _make_menu2(self):
+    def _make_menu3(self):
         third = DisplayMenu3(self.root, "?מה המסמך שתרצה לחפש בו", self.sub_links[self.clicked.get()])
         third.show()
 
@@ -294,8 +300,6 @@ class NoHeads(UserCheck):
         self.link_label = HTMLLabel(root,
                                     html=f'<a href="{link}">Link to page</a>')
 
-
-
     def remove(self):
         self.bad_label.destroy()
         self.link_label.destroy()
@@ -308,11 +312,18 @@ class NoHeads(UserCheck):
 
 class TheQuestion:
     def __init__(self, root, name, subject_link):
-        self._subject_link = subject_link
+        self._subject_link = self._is_link_valid(subject_link)
         self._root = root
         self._input = ttk.Entry(root, width=30)
         self.dif_button = ttk.Button(self._root, text="?מה השאלה", command=self.go)
         self._name = name
+
+    @staticmethod
+    def _is_link_valid(subject_link):
+        if subject_link[0] != 'h':
+            subject_link = url_main + subject_link
+        req = requests.get(subject_link)
+        return req.url
 
     def show(self):
         self._input.pack()
@@ -328,71 +339,71 @@ class TheQuestion:
         display_menus.removing_items(4)
         input = self._input.get()
         if len(input) != 0:
-            wait = UserCheck(self._root, "...אל תסגור את התוכנה עכשיו")
-            wait.show()
-            wait.bad_label.update()
+            wait = self._add_funny_sentence("...אל תסגור את התוכנה עכשיו")
 
-            text_extracter = Text(self._name, self._subject_link)
+            text_extracter = TexT(self._name, self._subject_link)
             wait.remove()
             wait.bad_label.update()
 
-            hold_on = UserCheck(self._root, "...רק עוד רגע")
-            hold_on.show()
-            hold_on.bad_label.update()
+            hold_on = self._add_funny_sentence("...רק עוד רגע")
 
             super_ai = TFIDF(text_extracter.get_text(), input)
             hold_on.remove()
 
             top_pages = super_ai.get_top_options()
             answer_the_man = TheAnswer(self._root, top_pages, self._subject_link)
-            answer_the_man.show()
+            answer_the_man.show_answer()
         else:
             bad_user = UserCheck(self._root, "נא לבחור אופציה")
             bad_user.show()
         print("fuck")
+
+    @timer
+    def _add_funny_sentence(self, text):
+        wait = UserCheck(self._root, text)
+        wait.show()
+        wait.bad_label.update()
+        return wait
 
 
 class TheAnswer:
     def __init__(self, root, top_options, file_link):
         self._root = root
         self._file_link = file_link
-        self._top_options_links = self._make_links(top_options)
-        print(f"this is the second list: {self._top_options_links}")
-        self._show_answer()
+        self._top_option = top_options
+        print(top_options)
 
-    def _show_answer(self):
+    def show_answer(self):
         display_menus.removing_items(5)
         if self._no_answer():
             self._show_no_answer()
+
+        self._show_web_page()
+
+    def _show_web_page(self):
+        chrome_path = r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        webpage = self._get_link()
+        webbrowser.register('chrome',
+                            None,
+                            webbrowser.BackgroundBrowser(
+                                chrome_path))
+        webbrowser.get('chrome').open(webpage)
+
+    def _get_link(self):
+        top = self._top_option[0] + 1
+        if pdf in self._file_link:
+            return f"{self._file_link}#page={top}"
+
+        elif flip in self._file_link:
+            return f"{self._file_link}#p={top}"
+
         else:
-            self._first = NoHeads(self._root, "!התשובה שלך", self._top_options_links[0])
-            self._list_of_widgets = self._add_widjets()
+            print("i'm fucked")
 
     def _no_answer(self):
-        return True if len(self._top_options_links) == 0 else False
+        return True if len(self._top_option) == 0 else False
 
     def _show_no_answer(self):
         bad = UserCheck(self._root, "לא נמצאה תשובה, בבקשה לנסח את השאלה טוב יותר")
         bad.show()
-
-    def _add_widjets(self):
-        my_list = list()
-        my_list.append(self._first)
-        return my_list
-
-    def _make_links(self, top_options):
-        links = []
-        for option in top_options:
-            link = self._file_link + f"#p={option+1}"
-            links.append(link)
-        return links
-
-    def show(self):
-        for widjet in self._list_of_widgets:
-            widjet.show()
-
-    def remove(self):
-        for widjet in self._list_of_widgets:
-            widjet.remove()
-
 
