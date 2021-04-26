@@ -1,8 +1,7 @@
-import requests
-from tkinter import *
-from bs4 import BeautifulSoup as bs
-import os
 import time
+
+url_main = "https://www.iroads.co.il/"
+filter = 'מידע-לספקים'
 
 
 
