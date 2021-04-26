@@ -1,10 +1,6 @@
 from page import *
 from helper import *
 
-# THE MAIN URL
-url_main = "https://www.iroads.co.il/"
-filter = 'מידע-לספקים'
-
 
 def main():
     # building my front page -- class
@@ -21,20 +17,6 @@ def main():
     page.root.mainloop()
 
     """ checking things"""
-    # i = 5
-    # url = "http://online.fliphtml5.com/kfky/pzdc/" + f"#p={i}"
-    # req = requests.get(url)
-    # print(req.url)
-#     # make_set_of_word
-#     checker()
-#
-# @timer
-# def checker():
-#     word = "עצירה"
-#     word1 = "עקיפה"
-#     ratio = fuzz.ratio(word, word1)
-#     print(ratio)
-
 
 if __name__ == '__main__':
     main()
